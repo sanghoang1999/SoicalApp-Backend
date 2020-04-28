@@ -31,15 +31,13 @@ router.post(
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.json({ errors: errors.array() });
     }
     const { email, password, handle } = req.body;
     try {
       const data = await db.doc(`/users/${handle}`).get();
       if (data.exists) {
-        return res
-          .status(400)
-          .json({ errors: [{ msg: "handle has been used" }] });
+        return res.json({ errors: [{ msg: "handle has been used" }] });
       }
       const newAuth = await firebase
         .auth()
@@ -50,7 +48,7 @@ router.post(
         email,
         createdAt: new Date().toISOString(),
 
-        imageUrl: `https://firebasestorage.googleapis.com/v0/b/${config.storageBucket}/o/nobody.png?alt=media`,
+        imageurl: `https://firebasestorage.googleapis.com/v0/b/${config.storageBucket}/o/nobody.png?alt=media`,
         userId: newAuth.user.uid
       };
       await db.doc(`/users/${handle}`).set(newUser);
@@ -62,7 +60,7 @@ router.post(
       const uid = uuid();
       const payload = {
         handle: user.docs[0].data().handle,
-        imageUrl: user.docs[0].data().imageUrl
+        imageurl: user.docs[0].data().imageurl
       };
       jwt.sign(payload, jwtSecret, { expiresIn: "1h" }, (err, token) => {
         if (err) throw err;
@@ -71,12 +69,10 @@ router.post(
     } catch (error) {
       console.log(error);
       if (error.code === "auth/email-already-in-use") {
-        return res
-          .status(400)
-          .json({ errors: [{ msg: "Email has been used" }] });
+        return res.json({ errors: [{ msg: "Email has been used" }] });
       }
       if (error.code === "auth/weak-password") {
-        return res.status(400).json({
+        return res.json({
           errors: [{ msg: "Password should be at least 6 characters" }]
         });
       }
@@ -91,7 +87,7 @@ router.post(
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.json({ errors: errors.array() });
     }
     const { email, password } = req.body;
     try {
@@ -106,7 +102,7 @@ router.post(
       const uid = uuid();
       const payload = {
         handle: user.docs[0].data().handle,
-        imageUrl: user.docs[0].data().imageUrl
+        imageurl: user.docs[0].data().imageurl
       };
       jwt.sign(payload, jwtSecret, { expiresIn: "1h" }, (err, token) => {
         if (err) throw err;
@@ -115,12 +111,10 @@ router.post(
     } catch (error) {
       console.log(error);
       if (error.code === "auth/wrong-password") {
-        return res.status(400).json({ errors: [{ msg: "Password is wrong" }] });
+        return res.json({ errors: [{ msg: "Password is wrong" }] });
       }
       if (error.code === "auth/user-not-found") {
-        return res
-          .status(400)
-          .json({ errors: [{ msg: "Email is not exist" }] });
+        return res.json({ errors: [{ msg: "Email is not exist" }] });
       }
       res.status(500).json("Server Error");
     }
@@ -134,7 +128,7 @@ router.post("/image", auth, (req, res) => {
   let imageFileName;
   busboy.on("file", (fieldname, file, filename, encoding, mimetype) => {
     if (mimetype !== "image/jpeg" && mimetype !== "image/png") {
-      return res.status(400).json({ errors: "Wrong file type submitted" });
+      return res.json({ errors: "Wrong file type submitted" });
     }
     const imageExtension = filename.split(".")[filename.split(".").length - 1];
 
@@ -162,7 +156,7 @@ router.post("/image", auth, (req, res) => {
         req.user.handle,
         prevNameFile
       );
-      res.user.imageUrl = prevNameFile;
+      req.user.imageurl = prevNameFile;
       res.json({ msg: "image uploaded successfully" });
     });
   });
@@ -212,8 +206,8 @@ async function resize(
         }
       });
     if (quantity === 100) {
-      const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${config.storageBucket}/o/${imageFileName}?alt=media`;
-      await db.doc(`users/${userHandle}`).update({ imageUrl });
+      const imageurl = `https://firebasestorage.googleapis.com/v0/b/${config.storageBucket}/o/${imageFileName}?alt=media`;
+      await db.doc(`users/${userHandle}`).update({ imageurl });
     }
     return imageFileName;
   } catch (error) {
@@ -224,7 +218,7 @@ async function resize(
 
 router.post(
   "/detail",
-  auth,
+
   [
     check("bio")
       .not()
@@ -239,7 +233,7 @@ router.post(
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.json({ errors: errors.array() });
     }
     let { bio, website, location } = req.body;
     if (website.trim().substring(0, 5) !== "https") {
@@ -247,7 +241,7 @@ router.post(
     }
     try {
       await db
-        .doc(`/users/${req.user.handle}`)
+        .doc(`/users/${req.headers.handle}`)
         .update({ bio, website, location });
       return res.json({ msg: "Details added successfully" });
     } catch (error) {
@@ -257,14 +251,14 @@ router.post(
   }
 );
 
-router.get("/me", auth, async (req, res) => {
+router.get("/me", async (req, res) => {
   try {
     const resData = {};
-    const userData = await db.doc(`/users/${req.user.handle}`).get();
+    const userData = await db.doc(`/users/${req.headers.handle}`).get();
     if (userData.exists) {
       const likes = await db
         .collection("likes")
-        .where("userHandle", "==", req.user.handle)
+        .where("userHandle", "==", req.headers.handle)
         .get();
       resData.credentials = userData.data();
       resData.likes =
@@ -273,7 +267,7 @@ router.get("/me", auth, async (req, res) => {
         }) || [];
       const notifications = await db
         .collection("notifications")
-        .where("recipient", "==", req.user.handle)
+        .where("recipient", "==", req.headers.handle)
         .orderBy("createdAt", "desc")
         .limit(10)
         .get();
@@ -285,7 +279,7 @@ router.get("/me", auth, async (req, res) => {
         }) || [];
       return res.status(201).json(resData);
     } else {
-      return res.status(404).json({ msg: " No user Detail " });
+      return res.json({ msg: " No user Detail " });
     }
   } catch (error) {
     console.log(error);
@@ -315,7 +309,7 @@ router.get("/:handle", async (req, res) => {
         }) || [];
       return res.status(201).json(resData);
     } else {
-      return res.status(404).json({ msg: " No user Detail " });
+      return res.json({ msg: " No user Detail " });
     }
   } catch (error) {
     console.log(error);
@@ -323,7 +317,7 @@ router.get("/:handle", async (req, res) => {
   }
 });
 
-router.post("/notifications", auth, async (req, res) => {
+router.post("/notifications", async (req, res) => {
   console.log("emvuidi");
   let batch = db.batch();
   req.body.forEach(notificationId => {
@@ -346,4 +340,22 @@ router.post("/notifications", auth, async (req, res) => {
       return res.status(500).json({ error: err.code });
     });
 });
+router.get("/tool/cc", async (req, res) => {
+  console.log("emvuidi");
+  let batch = db.batch();
+  let notis = await db.collection("notifications").get();
+  notis.docs.map(doc => {
+    batch.set(db.doc(`/notifications/${doc.id}`), { _id: doc.id });
+  });
+  batch
+    .commit()
+    .then(() => {
+      return res.json({ message: "Notifications marked read" });
+    })
+    .catch(err => {
+      console.error(err);
+      return res.status(500).json({ error: err.code });
+    });
+});
+
 module.exports = router;

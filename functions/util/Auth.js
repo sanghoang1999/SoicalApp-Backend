@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+
 const { jwtSecret } = require("../config");
 module.exports = async (req, res, next) => {
   console.log(jwtSecret);
@@ -12,7 +13,8 @@ module.exports = async (req, res, next) => {
       const decoded = jwt.verify(token, jwtSecret);
       console.log(decoded.handle);
       req.user.handle = decoded.handle;
-      req.user.imageUrl = decoded.imageUrl;
+      req.user.imageurl = decoded.imageurl;
+
       return next();
     } catch (error) {
       console.log(error);

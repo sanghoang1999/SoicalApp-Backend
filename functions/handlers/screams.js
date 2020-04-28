@@ -3,9 +3,9 @@ const express = require("express");
 const router = express.Router();
 const { check, validationResult } = require("express-validator");
 const auth = require("../util/Auth");
+
 router.post(
   "/",
-  auth,
   [
     check("body", "body is required")
       .not()
@@ -14,14 +14,14 @@ router.post(
   (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.json({ errors: errors.array() });
     }
     const body = req.body.body;
-    const userHandle = req.user.handle;
+    const userHandle = req.headers.handle;
     const newScream = {
       body,
       userHandle,
-      userImage: req.user.imageUrl,
+      userImage: req.headers.imageurl,
       likeCount: 0,
       commentCount: 0,
       createdAt: new Date().toISOString()
@@ -103,7 +103,7 @@ router.get("/:screamId", async (req, res) => {
         }) || [];
       return res.json(resData);
     } else {
-      return res.status(404).json({ msg: " Scream not found " });
+      return res.json({ msg: " Scream not found " });
     }
   } catch (error) {
     console.log(error);
@@ -113,7 +113,6 @@ router.get("/:screamId", async (req, res) => {
 
 router.post(
   "/:screamId/comment",
-  auth,
   ([
     check("body")
       .not()
@@ -122,14 +121,14 @@ router.post(
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.json({ errors: errors.array() });
     }
     const newCm = {
       body: req.body.body,
       createdAt: new Date().toISOString(),
       screamId: req.params.screamId,
-      userHandle: req.user.handle,
-      userImage: req.user.imageUrl
+      userHandle: req.headers.handle,
+      userImage: req.headers.imageurl
     };
     const scream = await db.doc(`screams/${req.params.screamId}`).get();
     if (scream.exists) {
@@ -139,19 +138,19 @@ router.post(
         .update({ commentCount: scream.data().commentCount + 1 });
       return res.json(newCm);
     } else {
-      return res.status(404).json({ msg: " Scream not found " });
+      return res.json({ msg: " Scream not found " });
     }
   })
 );
 
-router.get("/:screamId/like", auth, async (req, res) => {
+router.get("/:screamId/like", async (req, res) => {
   try {
     const scream = await db.doc(`screams/${req.params.screamId}`).get();
     if (scream.exists) {
       const like = await db
         .collection("likes")
         .where("screamId", "==", req.params.screamId)
-        .where("userHandle", "==", req.user.handle)
+        .where("userHandle", "==", req.headers.handle)
         .limit(1)
         .get();
 
@@ -159,47 +158,52 @@ router.get("/:screamId/like", auth, async (req, res) => {
         const newLikeSchema = {
           screamId: req.params.screamId,
           createdAt: new Date().toISOString(),
-          userHandle: req.user.handle,
-          userImage: req.user.imageUrl
+          userHandle: req.headers.handle,
+          userImage: req.headers.imageurl
         };
+        console.log(newLikeSchema);
         await db.collection("likes").add(newLikeSchema);
         await db
           .doc(`screams/${req.params.screamId}`)
           .update({ likeCount: scream.data().likeCount + 1 });
         return res.json(newLikeSchema);
       } else {
-        return res.status(400).json({ msg: "Scream already liked" });
+        return res.json({ msg: "Scream already liked" });
       }
     } else {
-      return res.status(404).json({ msg: "scream not found" });
+      return res.json({ msg: "scream not found" });
     }
   } catch (error) {
     console.log(error);
     return res.status(500).json({ errors: error.code });
   }
 });
-router.get('/:screamId/listLike',async(req,res)=> {
+router.get("/:screamId/listLike", async (req, res) => {
   try {
-   const listLikeStream = await db.collection('likes').where("screamId", "==", req.params.screamId).orderBy("createdAt", "desc").get();
-    const resData = listLikeStream.docs.map(data=> {
+    const listLikeStream = await db
+      .collection("likes")
+      .where("screamId", "==", req.params.screamId)
+      .orderBy("createdAt", "desc")
+      .get();
+    const resData = listLikeStream.docs.map(data => {
       console.log(data);
       return data.data();
-    })
+    });
     res.json(resData);
-  } catch(e) {
+  } catch (e) {
     // statements
     console.log(e);
     return res.status(500).json({ errors: error.code });
   }
-})
-router.get("/:screamId/unlike", auth, async (req, res) => {
+});
+router.get("/:screamId/unlike", async (req, res) => {
   try {
     const scream = await db.doc(`screams/${req.params.screamId}`).get();
     if (scream.exists) {
       const like = await db
         .collection("likes")
         .where("screamId", "==", req.params.screamId)
-        .where("userHandle", "==", req.user.handle)
+        .where("userHandle", "==", req.headers.handle)
         .limit(1)
         .get();
 
@@ -210,27 +214,27 @@ router.get("/:screamId/unlike", auth, async (req, res) => {
           .update({ likeCount: scream.data().likeCount - 1 });
         return res.json({ msg: "unlike successful" });
       } else {
-        return res.status(400).json({ msg: "Server Error" });
+        return res.json({ msg: "Server Error" });
       }
     } else {
-      return res.status(404).json({ msg: "scream not found" });
+      return res.json({ msg: "scream not found" });
     }
   } catch (error) {
     return res.status(500).json({ errors: error.code });
   }
 });
 
-router.delete("/:screamId", auth, async (req, res) => {
+router.delete("/:screamId", async (req, res) => {
   try {
     const scream = await db.doc(`screams/${req.params.screamId}`).get();
     if (scream.exists) {
-      if (scream.data().userHandle != req.user.handle) {
+      if (scream.data().userHandle != req.headers.handle) {
         return res.status(403).json({ msg: "Unauthorized" });
       }
       await db.doc(`screams/${req.params.screamId}`).delete();
       res.json({ msg: "Scream deleted successfully" });
     } else {
-      return res.status(404).json({ msg: "Scream not found" });
+      return res.json({ msg: "Scream not found" });
     }
   } catch (error) {
     console.log(error);
